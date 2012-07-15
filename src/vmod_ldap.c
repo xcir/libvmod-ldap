@@ -38,11 +38,16 @@ struct vmod_ldap *vmodldap_get_raw(struct sess *sp){
 	return NULL;
 }
 
-void vmodldap_free(struct vmod_ldap *c){
+void vmodldap_free(struct sess *sp){
+	struct vmod_ldap *c;
+	c = vmodldap_get_raw(sp);
 	if(!c) return;
 	if(c->ld) ldap_unbind_s(c->ld);
 	if(c->searchResult) ldap_msgfree(c->searchResult);
+	if(c->user) free(c->user);
+	if(c->pass) free(c->pass);
 	FREE_OBJ(c);
+	VRT_SetHdr(sp, HDR_REQ, VMODLDAP_HDR, 0);
 }
 
 
@@ -70,13 +75,14 @@ struct vmod_ldap *vmodldap_init(struct sess *sp, const char*user, const char*pas
 	return c;
 }
 
+
 unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*basepw, const char*searchdn, const char*user, const char *pass){
 
 	AN(basedn);
 	AN(basepw);
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
-	if(c) vmodldap_free(c);//‘O‚ÌÚ‘±‚ÌØ’f
+	if(c) vmodldap_free(sp);//‘O‚ÌÚ‘±‚ÌØ’f
 	c = vmodldap_init(sp,user,pass);
 	
 	int ret;
@@ -101,7 +107,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	ret = ldap_initialize(&c->ld, host);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_initialize: %d, (%s)", ret, ldap_err2string(ret));
-		vmodldap_free(c);
+		vmodldap_free(sp);
 		ldap_free_urldesc(ludpp);
 		free(host);
 		return res;
@@ -113,7 +119,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 		ldap_set_option(c->ld, LDAP_OPT_PROTOCOL_VERSION, &version );
 		if(ret != LDAP_SUCCESS){
 			syslog(6,"ldap_set_option: %d, (%s)", ret, ldap_err2string(ret));
-			vmodldap_free(c);
+			vmodldap_free(sp);
 			ldap_free_urldesc(ludpp);
 			return res;
 		}
@@ -122,7 +128,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	ret = ldap_simple_bind_s(c->ld,basedn,basepw);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_simple_bind_s: %d, (%s)", ret, ldap_err2string(ret));
-		vmodldap_free(c);
+		vmodldap_free(sp);
 		ldap_free_urldesc(ludpp);
 		return res;
 	}
@@ -142,7 +148,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	ret = ldap_search_ext_s(c->ld, ludpp->lud_dn, ludpp->lud_scope, filter, NULL, 0, NULL, NULL, &timeOut, 0,&c->searchResult);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_search_ext_s: %d, (%s)", ret, ldap_err2string(ret));
-		vmodldap_free(c);
+		vmodldap_free(sp);
 	}else if(ldap_count_entries(c->ld, c->searchResult) > 0) {
 		c->dn = ldap_get_dn(c->ld, c->searchResult);
 		c->dnlen = strlen(c->dn);
@@ -154,6 +160,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	return res;
 
 }
+/*
 unsigned vmod_compare_user(struct sess *sp,const char *dn,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -165,9 +172,10 @@ unsigned vmod_compare_user(struct sess *sp,const char *dn,const char *attr){
 	struct berval bvalue;
 	bvalue.bv_val = c->user;
 	bvalue.bv_len = c->userlen;
-	
+	syslog(6,c->dn);
 	ret = ldap_compare_ext_s(c->ld, dn, attr,&bvalue, NULL, NULL);
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
+	syslog(6,"xxxx: %d, (%s)", ret, ldap_err2string(ret));
 	return res;
 }
 
@@ -182,12 +190,14 @@ unsigned vmod_compare_group(struct sess *sp,const char *dn,const char *attr){
 	struct berval bvalue;
 	bvalue.bv_val = c->dn;
 	bvalue.bv_len = c->dnlen;
+	syslog(6,"%d %s",c->dnlen,c->dn);
 	
 	ret = ldap_compare_ext_s(c->ld, dn, attr,&bvalue, NULL, NULL);
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
+	syslog(6,"xxxx: %d, (%s)", ret, ldap_err2string(ret));
 	return res;
 }
-
+*/
 unsigned vmod_bind(struct sess *sp){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -207,7 +217,7 @@ void vmod_close(struct sess *sp){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
 	if(!c) return;
-	vmodldap_free(c);
+	vmodldap_free(sp);
 }
 
 unsigned vmod_simple_auth(struct sess *sp,unsigned V3,const char* basedn,const char*basepw,const char*searchdn,const char*user,const char*pass){
