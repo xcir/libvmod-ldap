@@ -1,4 +1,12 @@
 Module ldap
 Init init_function
 
-Function BOOL auth(BOOL,STRING,STRING,STRING,STRING,STRING)
+Function BOOL simple_auth(BOOL,STRING,STRING,STRING,STRING,STRING)
+
+
+
+Function BOOL open(BOOL,STRING,STRING,STRING,STRING,STRING)
+Function BOOL compare_user(STRING,STRING)
+Function BOOL compare_group(STRING,STRING)
+Function BOOL bind()
+Function VOID close()

@@ -21,7 +21,6 @@ In development.
         ::
 
                 import ldap;
-                import digest;
                 
                 sub vcl_error {
                   if (obj.status == 401) {
@@ -34,7 +33,7 @@ In development.
                 sub vcl_recv{
                 
                 if(req.url ~ "^/member/"){
-                        if(!(req.http.Authorization && ldap.auth(
+                        if(!(req.http.Authorization && ldap.simple_auth(
                                 true,
                                 "cn=Manager,dc=ldap,dc=example,dc=com",
                                 "password",
