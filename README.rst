@@ -21,6 +21,7 @@ In development.
         ::
 
                 import ldap;
+                import digest;
                 
                 sub vcl_error {
                   if (obj.status == 401) {
