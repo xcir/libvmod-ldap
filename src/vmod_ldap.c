@@ -20,8 +20,8 @@ void vmod_ldap_free(LDAP*ld, LDAPMessage *searchResult){
 
 
 
-unsigned vmod_ldap_pre(struct sess *sp, const char *host, unsigned V3, const char* basedn, const char*basepw, const char*searchdn, const char*user, LDAP **rld, LDAPMessage **rsearchResult){
-	AN(host);
+unsigned vmod_ldap_pre(struct sess *sp, unsigned V3, const char* basedn, const char*basepw, const char*searchdn, const char*user, LDAP **rld, LDAPMessage **rsearchResult){
+
 	AN(basedn);
 	AN(basepw);
 	LDAP	*ld = NULL;
@@ -34,16 +34,28 @@ unsigned vmod_ldap_pre(struct sess *sp, const char *host, unsigned V3, const cha
 	char *filter;
 	char *dn;
 	int version;
+	char *host;
+	//URLパース
+	ret = ldap_url_parse(searchdn, &ludpp);
+	if(ret != LDAP_SUCCESS){
+		syslog(6,"ldap_url_parse: %d, (%s)", ret, ldap_err2string(ret));
+		ldap_free_urldesc(ludpp);
+		return;
+	}
 	
-
+	host = calloc(1,strlen(searchdn)+4);
+	sprintf(host,"%s://%s:%d/", ludpp->lud_scheme,ludpp->lud_host,ludpp->lud_port);
 	
 	//接続
 	ret = ldap_initialize(&ld, host);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_initialize: %d, (%s)", ret, ldap_err2string(ret));
 		vmod_ldap_free(ld,searchResult);
+		ldap_free_urldesc(ludpp);
+		free(host);
 		return res;
 	}
+	free(host);
 	//V3認証
 	if(V3){
 		version = LDAP_VERSION3;
@@ -51,6 +63,7 @@ unsigned vmod_ldap_pre(struct sess *sp, const char *host, unsigned V3, const cha
 		if(ret != LDAP_SUCCESS){
 			syslog(6,"ldap_set_option: %d, (%s)", ret, ldap_err2string(ret));
 			vmod_ldap_free(ld,searchResult);
+			ldap_free_urldesc(ludpp);
 			return res;
 		}
 	}
@@ -59,14 +72,8 @@ unsigned vmod_ldap_pre(struct sess *sp, const char *host, unsigned V3, const cha
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_simple_bind_s: %d, (%s)", ret, ldap_err2string(ret));
 		vmod_ldap_free(ld,searchResult);
+		ldap_free_urldesc(ludpp);
 		return res;
-	}
-	//URLパース
-	ret = ldap_url_parse(searchdn, &ludpp);
-	if(ret != LDAP_SUCCESS){
-		syslog(6,"ldap_url_parse: %d, (%s)", ret, ldap_err2string(ret));
-		vmod_ldap_free(ld,searchResult);
-		return;
 	}
 
 	
@@ -99,7 +106,7 @@ unsigned vmod_ldap_pre(struct sess *sp, const char *host, unsigned V3, const cha
 }
 
 
-unsigned vmod_auth(struct sess *sp,const char *host,unsigned V3,const char* basedn,const char*basepw,const char*searchdn,const char*user,const char*pass){
+unsigned vmod_auth(struct sess *sp,unsigned V3,const char* basedn,const char*basepw,const char*searchdn,const char*user,const char*pass){
 	LDAP	*ld;
 	struct berval bvalue;
 	int ret;
@@ -107,7 +114,7 @@ unsigned vmod_auth(struct sess *sp,const char *host,unsigned V3,const char* base
 	unsigned res = (0==1);
 	char *dn;
 	
-	ret = vmod_ldap_pre(sp, host, V3, basedn, basepw, searchdn, user, &ld, &searchResult);
+	ret = vmod_ldap_pre(sp, V3, basedn, basepw, searchdn, user, &ld, &searchResult);
 	if(!ret) return res;
 	
 	

@@ -1,4 +1,4 @@
 Module ldap
 Init init_function
 
-Function BOOL auth(STRING,BOOL,STRING,STRING,STRING,STRING,STRING)
+Function BOOL auth(BOOL,STRING,STRING,STRING,STRING,STRING)
