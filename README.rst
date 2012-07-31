@@ -38,8 +38,8 @@ In development.
                                 "cn=Manager,dc=ldap,dc=example,dc=com",
                                 "password",
                                 "ldap://192.168.1.1/ou=people,dc=ldap,dc=example,dc=com?uid?sub?(objectClass=*)",
-                                regsub(digest.base64_decode(regsub(req.http.Authorization, "^Basic (.*)$","\1")), "^([^:]+):.*$", "\1"),
-                                regsub(digest.base64_decode(regsub(req.http.Authorization, "^Basic (.*)$","\1")), "^.*:([^:]+)$", "\1")
+                                ldap.get_basicuser(),
+                                ldap.get_basicpass()
                         ))){
                                 error 401;
                         }
