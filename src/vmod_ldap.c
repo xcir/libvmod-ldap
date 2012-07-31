@@ -172,7 +172,7 @@ unsigned vmod_require_user(struct sess *sp,const char *val){
 	return res;
 }
 
-unsigned vmod_compare_user(struct sess *sp,const char *val,const char *attr){
+unsigned vmod_compare(struct sess *sp,const char *val,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
 	unsigned res = (0==1);
