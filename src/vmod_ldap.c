@@ -202,6 +202,22 @@ unsigned vmod_compare_dn(struct sess *sp,const char *val,const char *attr){
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
 	return res;
 }
+unsigned vmod_compare_attribute(struct sess *sp,const char *val,const char *attr){
+	struct vmod_ldap *c;
+	c = vmodldap_get_raw(sp);
+	unsigned res = (0==1);
+	int ret;
+	if(!c) return res;
+	if(!c->result) return res;
+	
+	struct berval bvalue;
+	bvalue.bv_val = val;
+	bvalue.bv_len = strlen(val);
+	ret = ldap_compare_ext_s(c->ld, c->dn, attr,&bvalue, NULL, NULL);
+	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
+	return res;
+}
+
 
 unsigned vmod_bind(struct sess *sp){
 	struct vmod_ldap *c;
