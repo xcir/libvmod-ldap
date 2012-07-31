@@ -82,7 +82,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	AN(basepw);
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
-	if(c) vmodldap_free(sp);//‘O‚ÌÚ‘±‚ÌØ’f
+	if(c) vmodldap_free(sp);//å‰ã®æŽ¥ç¶šã®åˆ‡æ–­
 	c = vmodldap_init(sp,user,pass);
 	
 	int ret;
@@ -93,7 +93,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	char *filter;
 	int version;
 	char *host;
-	//URLƒp[ƒX
+	//URLãƒ‘ãƒ¼ã‚¹
 	ret = ldap_url_parse(searchdn, &ludpp);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_url_parse: %d, (%s)", ret, ldap_err2string(ret));
@@ -103,7 +103,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	
 	host = calloc(1,strlen(searchdn)+4);
 	sprintf(host,"%s://%s:%d/", ludpp->lud_scheme,ludpp->lud_host,ludpp->lud_port);
-	//Ú‘±
+	//æŽ¥ç¶š
 	ret = ldap_initialize(&c->ld, host);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_initialize: %d, (%s)", ret, ldap_err2string(ret));
@@ -113,7 +113,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 		return res;
 	}
 	free(host);
-	//V3”FØ
+	//V3èªè¨¼
 	if(V3){
 		version = LDAP_VERSION3;
 		ldap_set_option(c->ld, LDAP_OPT_PROTOCOL_VERSION, &version );
@@ -124,7 +124,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 			return res;
 		}
 	}
-	//base”FØ
+	//baseèªè¨¼
 	ret = ldap_simple_bind_s(c->ld,basedn,basepw);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_simple_bind_s: %d, (%s)", ret, ldap_err2string(ret));
@@ -133,7 +133,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 		return res;
 	}
 
-	//•¶Žš—ñ’·’²®
+	//æ–‡å­—åˆ—é•·èª¿æ•´
 	if(ludpp->lud_filter){
 		filterlen += strlen(ludpp->lud_filter);
 	}else{
@@ -144,7 +144,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	filter = calloc(1,filterlen +1);
 	sprintf(filter,"(&%s(%s=%s))", ludpp->lud_filter != NULL ? ludpp->lud_filter : "(objectClass=*)", ludpp->lud_attrs[0], user);
 
-	//ƒŠƒXƒgŽæ“¾
+	//ãƒªã‚¹ãƒˆå–å¾—
 	ret = ldap_search_ext_s(c->ld, ludpp->lud_dn, ludpp->lud_scope, filter, NULL, 0, NULL, NULL, &timeOut, 0,&c->searchResult);
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_search_ext_s: %d, (%s)", ret, ldap_err2string(ret));
