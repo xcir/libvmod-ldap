@@ -160,8 +160,19 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	return res;
 
 }
-/*
-unsigned vmod_compare_user(struct sess *sp,const char *dn,const char *attr){
+
+unsigned vmod_require_user(struct sess *sp,const char *val){
+	struct vmod_ldap *c;
+	c = vmodldap_get_raw(sp);
+	unsigned res = (0==1);
+	int ret;
+	if(!c) return res;
+	if(!c->result) return res;
+	if(strncmp(val,c->dn,strlen(val)) == 0) res = (1==1);
+	return res;
+}
+
+unsigned vmod_compare_user(struct sess *sp,const char *val,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
 	unsigned res = (0==1);
@@ -172,14 +183,11 @@ unsigned vmod_compare_user(struct sess *sp,const char *dn,const char *attr){
 	struct berval bvalue;
 	bvalue.bv_val = c->user;
 	bvalue.bv_len = c->userlen;
-	syslog(6,c->dn);
-	ret = ldap_compare_ext_s(c->ld, dn, attr,&bvalue, NULL, NULL);
+	ret = ldap_compare_ext_s(c->ld, val, attr,&bvalue, NULL, NULL);
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
-	syslog(6,"xxxx: %d, (%s)", ret, ldap_err2string(ret));
 	return res;
 }
-
-unsigned vmod_compare_group(struct sess *sp,const char *dn,const char *attr){
+unsigned vmod_compare_dn(struct sess *sp,const char *val,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
 	unsigned res = (0==1);
@@ -190,14 +198,11 @@ unsigned vmod_compare_group(struct sess *sp,const char *dn,const char *attr){
 	struct berval bvalue;
 	bvalue.bv_val = c->dn;
 	bvalue.bv_len = c->dnlen;
-	syslog(6,"%d %s",c->dnlen,c->dn);
-	
-	ret = ldap_compare_ext_s(c->ld, dn, attr,&bvalue, NULL, NULL);
+	ret = ldap_compare_ext_s(c->ld, val, attr,&bvalue, NULL, NULL);
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
-	syslog(6,"xxxx: %d, (%s)", ret, ldap_err2string(ret));
 	return res;
 }
-*/
+
 unsigned vmod_bind(struct sess *sp){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -209,7 +214,6 @@ unsigned vmod_bind(struct sess *sp){
 	ret = ldap_simple_bind_s(c->ld, c->dn, c->pass);
 	if(ret == LDAP_SUCCESS) res =(1==1);
 	
-	syslog(6,"result = %d",res);
 	return res;
 }
 
