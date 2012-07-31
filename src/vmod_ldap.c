@@ -233,6 +233,16 @@ unsigned vmod_bind(struct sess *sp){
 	return res;
 }
 
+
+const char* vmod_get_dn(struct sess *sp){
+	struct vmod_ldap *c;
+	c = vmodldap_get_raw(sp);
+	if(!c) return NULL;
+	if(!c->result) return NULL;
+	
+	return c->dn;
+}
+
 void vmod_close(struct sess *sp){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
