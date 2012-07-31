@@ -10,6 +10,22 @@
 
 #include <ldap.h>
 
+//base64
+enum alphabets {
+	BASE64 = 0,
+	BASE64URL = 1,
+	BASE64URLNOPAD = 2,
+	N_ALPHA
+};
+
+static struct e_alphabet {
+	char *b64;
+	char i64[256];
+	char padding;
+} alphabet[N_ALPHA];
+
+
+
 #define VMODLDAP_HDR "\020X-VMOD-LDAP-PTR:"
 
 struct vmod_ldap {
@@ -24,6 +40,83 @@ struct vmod_ldap {
 	int         result;
 	const char  *pass;
 };
+
+
+static void
+vmod_digest_alpha_init(struct e_alphabet *alpha)
+{
+	int i;
+	const char *p;
+
+	for (i = 0; i < 256; i++)
+		alpha->i64[i] = -1;
+	for (p = alpha->b64, i = 0; *p; p++, i++)
+		alpha->i64[(int)*p] = (char)i;
+	if (alpha->padding)
+		alpha->i64[alpha->padding] = 0;
+}
+static int
+base64_decode(struct e_alphabet *alpha, char *d, unsigned dlen, const char *s)
+{
+	unsigned u, v, l;
+	int i;
+
+	u = 0;
+	l = 0;
+	while (*s) {
+		for (v = 0; v < 4; v++) {
+			if (*s)
+				i = alpha->i64[(int)*s++];
+			else
+				i = 0;
+			if (i < 0)
+				return (-1);
+			u <<= 6;
+			u |= i;
+		}
+			
+		for (v = 0; v < 3; v++) {
+			if (l >= dlen - 1)
+				return (-1);
+			*d = (u >> 16) & 0xff;
+			u <<= 8;
+			l++;
+			d++;
+		}
+		if (!*s)
+			break;
+	}
+	*d = '\0';
+	l++;
+	return (l);
+}
+void parseAuthHeader(struct sess *sp, char** user, char** pass){
+	const char *tmp;
+	tmp = VRT_GetHdr(sp, HDR_REQ, "\016Authorization:");
+	if(tmp == NULL) return;
+	if(strncmp(tmp,"Basic ",6) != 0) return;
+	tmp +=6;
+	
+	int u;
+	char *p,*pa;
+	u = WS_Reserve(sp->wrk->ws,0);
+	p = sp->wrk->ws->f;
+	u = base64_decode(&alphabet[BASE64], p,u,tmp);
+	if (u < 0) {
+		WS_Release(sp->wrk->ws,0);
+		return;
+	}
+	pa = strstr(p,":");
+	if(pa == NULL){
+		WS_Release(sp->wrk->ws,0);
+		return;
+	}
+	pa[0] = 0;
+	++pa;
+	*user = p;
+	*pass = pa;
+	WS_Release(sp->wrk->ws,u);
+}
 
 struct vmod_ldap *vmodldap_get_raw(struct sess *sp){
 	const char *tmp;
@@ -80,6 +173,9 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 
 	AN(basedn);
 	AN(basepw);
+	if(user == NULL) return;
+	if(pass == NULL) return;
+	
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
 	if(c) vmodldap_free(sp);//前の接続の切断
@@ -251,6 +347,7 @@ void vmod_close(struct sess *sp){
 }
 
 unsigned vmod_simple_auth(struct sess *sp,unsigned V3,const char* basedn,const char*basepw,const char*searchdn,const char*user,const char*pass){
+
 	unsigned res;
 	vmod_open(sp, V3, basedn, basepw, searchdn, user, pass);
 	res = vmod_bind(sp);
@@ -258,9 +355,37 @@ unsigned vmod_simple_auth(struct sess *sp,unsigned V3,const char* basedn,const c
 	return res;
 }
 
+
+const char* vmod_get_basicuser(struct sess *sp){
+	char *user = 0,*pass = 0;
+	parseAuthHeader(sp,&user,&pass);
+	
+	return user;
+}
+const char* vmod_get_basicpass(struct sess *sp){
+	char *user = 0,*pass = 0;
+	
+	parseAuthHeader(sp,&user,&pass);
+	
+	return pass;
+}
 int
 init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
 {
-
+    alphabet[BASE64].b64 =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+		"ghijklmnopqrstuvwxyz0123456789+/";
+	alphabet[BASE64].padding = '=';
+	alphabet[BASE64URL].b64 =
+		 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+		 "ghijklmnopqrstuvwxyz0123456789-_";
+	alphabet[BASE64URL].padding = '=';
+	alphabet[BASE64URLNOPAD].b64 =
+		 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+		 "ghijklmnopqrstuvwxyz0123456789-_";
+	alphabet[BASE64URLNOPAD].padding = 0;
+	vmod_digest_alpha_init(&alphabet[BASE64]);
+	vmod_digest_alpha_init(&alphabet[BASE64URL]);
+	vmod_digest_alpha_init(&alphabet[BASE64URLNOPAD]);
 	return (0);
 }

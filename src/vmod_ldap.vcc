@@ -13,3 +13,6 @@ Function BOOL compare_dn(STRING,STRING)
 Function BOOL compare_attribute(STRING,STRING)
 Function BOOL bind()
 Function VOID close()
+
+Function STRING get_basicuser()
+Function STRING get_basicpass()
