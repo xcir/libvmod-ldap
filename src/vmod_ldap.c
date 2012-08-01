@@ -129,6 +129,9 @@ init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
 //hook vcl_deliver
 void hookFunc(struct sess *sp){
 	
+	//disable hook
+	return;
+	
 	if(hook_done == 1 && sp->vcl->deliver_func != vmod_Hook_unset_deliver) hook_done = 0;
 	
 	if(hook_done == 0){
