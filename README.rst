@@ -93,6 +93,9 @@ advanced authenticate
                 }
 
 
+ATTENTION
+============
+
 don’t use varnishadm’s command "vcl.use" and "vcl.discard" . because to the segfault or call to other vcl function.
 
 
