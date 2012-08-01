@@ -2,28 +2,11 @@
 #include "vcl.h"
 #include "vrt.h"
 #include "bin/varnishd/cache.h"
-
 #include <syslog.h>
 #include <stdio.h>
-
 #include "vcc_if.h"
 
 #include <ldap.h>
-
-//base64
-enum alphabets {
-	BASE64 = 0,
-	BASE64URL = 1,
-	BASE64URLNOPAD = 2,
-	N_ALPHA
-};
-
-static struct e_alphabet {
-	char *b64;
-	char i64[256];
-	char padding;
-} alphabet[N_ALPHA];
-
 
 
 #define VMODLDAP_HDR "\020X-VMOD-LDAP-PTR:"
@@ -38,8 +21,36 @@ struct vmod_ldap {
 	const char  *dn;
 	int         dnlen;
 	int         result;
-	const char  *pass;
+	char        *pass;
 };
+
+
+static vcl_func_f         *vmod_Hook_deliver = NULL;
+static unsigned           hook_done = 0;
+
+void hookFunc(struct sess *);
+static int vmod_Hook_unset_deliver(struct sess *);
+static pthread_mutex_t    vmod_mutex = PTHREAD_MUTEX_INITIALIZER;
+void vmodldap_free(struct sess *);
+struct vmod_ldap *vmodldap_get_raw(struct sess *);
+struct vmod_ldap *vmodldap_init(struct sess *, const char*, const char*);
+//////////////////////////////////////////////////
+//base64 based on libvmod-digest
+//
+//https://github.com/varnish/libvmod-digest
+//////////////////////////////////////////////////
+enum alphabets {
+	BASE64 = 0,
+	BASE64URL = 1,
+	BASE64URLNOPAD = 2,
+	N_ALPHA
+};
+
+static struct e_alphabet {
+	char *b64;
+	char i64[256];
+	char padding;
+} alphabet[N_ALPHA];
 
 
 static void
@@ -90,7 +101,63 @@ base64_decode(struct e_alphabet *alpha, char *d, unsigned dlen, const char *s)
 	l++;
 	return (l);
 }
+
+int
+init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
+{
+    alphabet[BASE64].b64 =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+		"ghijklmnopqrstuvwxyz0123456789+/";
+	alphabet[BASE64].padding = '=';
+	alphabet[BASE64URL].b64 =
+		 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+		 "ghijklmnopqrstuvwxyz0123456789-_";
+	alphabet[BASE64URL].padding = '=';
+	alphabet[BASE64URLNOPAD].b64 =
+		 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+		 "ghijklmnopqrstuvwxyz0123456789-_";
+	alphabet[BASE64URLNOPAD].padding = 0;
+	vmod_digest_alpha_init(&alphabet[BASE64]);
+	vmod_digest_alpha_init(&alphabet[BASE64URL]);
+	vmod_digest_alpha_init(&alphabet[BASE64URLNOPAD]);
+	return (0);
+}
+
+//////////////////////////////////////////////////
+
+
+//hook vcl_deliver
+void hookFunc(struct sess *sp){
+	
+	if(hook_done == 1 && sp->vcl->deliver_func != vmod_Hook_unset_deliver) hook_done = 0;
+	
+	if(hook_done == 0){
+		AZ(pthread_mutex_lock(&vmod_mutex));
+		if(hook_done == 0){
+
+			vmod_Hook_deliver		= sp->vcl->deliver_func;
+			sp->vcl->deliver_func	= vmod_Hook_unset_deliver;
+			hook_done = 1;
+
+		}
+		AZ(pthread_mutex_unlock(&vmod_mutex));
+	}
+}
+
+static int vmod_Hook_unset_deliver(struct sess *sp){
+	int ret = vmod_Hook_deliver(sp);
+	struct vmod_ldap *c;
+	c = vmodldap_get_raw(sp);
+	if(c) vmodldap_free(sp);
+	return(ret);
+
+}
+
+//parse for Basic Authorization header
 void parseAuthHeader(struct sess *sp, char** user, char** pass){
+	hookFunc(sp);
+	*user = 0;
+	*pass = 0;
 	const char *tmp;
 	tmp = VRT_GetHdr(sp, HDR_REQ, "\016Authorization:");
 	if(tmp == NULL) return;
@@ -118,6 +185,7 @@ void parseAuthHeader(struct sess *sp, char** user, char** pass){
 	WS_Release(sp->wrk->ws,u);
 }
 
+
 struct vmod_ldap *vmodldap_get_raw(struct sess *sp){
 	const char *tmp;
 	struct vmod_ldap *c;
@@ -130,20 +198,6 @@ struct vmod_ldap *vmodldap_get_raw(struct sess *sp){
 	}
 	return NULL;
 }
-
-void vmodldap_free(struct sess *sp){
-	struct vmod_ldap *c;
-	c = vmodldap_get_raw(sp);
-	if(!c) return;
-	if(c->ld) ldap_unbind_s(c->ld);
-	if(c->searchResult) ldap_msgfree(c->searchResult);
-	if(c->user) free(c->user);
-	if(c->pass) free(c->pass);
-	FREE_OBJ(c);
-	VRT_SetHdr(sp, HDR_REQ, VMODLDAP_HDR, 0);
-}
-
-
 
 struct vmod_ldap *vmodldap_init(struct sess *sp, const char*user, const char*pass){
 	struct vmod_ldap *c;
@@ -167,14 +221,47 @@ struct vmod_ldap *vmodldap_init(struct sess *sp, const char*user, const char*pas
 	VRT_SetHdr(sp, HDR_REQ, VMODLDAP_HDR, buf, vrt_magic_string_end);
 	return c;
 }
+void vmodldap_free(struct sess *sp){
+	struct vmod_ldap *c;
+	c = vmodldap_get_raw(sp);
+	if(!c) return;
+	if(c->ld) ldap_unbind_s(c->ld);
+	if(c->searchResult) ldap_msgfree(c->searchResult);
+	if(c->user) free(c->user);
+	if(c->pass) free(c->pass);
+	FREE_OBJ(c);
+	VRT_SetHdr(sp, HDR_REQ, VMODLDAP_HDR, 0);
+}
 
+//////////////////////////////////////////////////
 
+//get user name from Authorization header
+const char* vmod_get_basicuser(struct sess *sp){
+	char *user,*pass;
+	parseAuthHeader(sp,&user,&pass);
+	
+	return user;
+}
+
+//get pass from Authorization header
+const char* vmod_get_basicpass(struct sess *sp){
+	char *user,*pass;
+	
+	parseAuthHeader(sp,&user,&pass);
+	
+	return pass;
+}
+
+//init ldap connection
 unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*basepw, const char*searchdn, const char*user, const char *pass){
+
+	hookFunc(sp);
 
 	AN(basedn);
 	AN(basepw);
-	if(user == NULL) return;
-	if(pass == NULL) return;
+	unsigned res = (0==1);
+	if(user == NULL) return res;
+	if(pass == NULL) return res;
 	
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -183,7 +270,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	
 	int ret;
 	struct timeval timeOut = { 10, 0 };
-	unsigned res = (0==1);
+	
 	LDAPURLDesc *ludpp;
 	int filterlen = 0;
 	char *filter;
@@ -194,7 +281,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 	if(ret != LDAP_SUCCESS){
 		syslog(6,"ldap_url_parse: %d, (%s)", ret, ldap_err2string(ret));
 		ldap_free_urldesc(ludpp);
-		return;
+		return res;
 	}
 	
 	host = calloc(1,strlen(searchdn)+4);
@@ -257,6 +344,7 @@ unsigned vmod_open(struct sess *sp, unsigned V3, const char* basedn, const char*
 
 }
 
+//compare dn with val
 unsigned vmod_require_user(struct sess *sp,const char *val){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -268,6 +356,7 @@ unsigned vmod_require_user(struct sess *sp,const char *val){
 	return res;
 }
 
+//compare
 unsigned vmod_compare(struct sess *sp,const char *val,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -283,6 +372,8 @@ unsigned vmod_compare(struct sess *sp,const char *val,const char *attr){
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
 	return res;
 }
+
+//compare(use DN)
 unsigned vmod_compare_dn(struct sess *sp,const char *val,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -292,12 +383,14 @@ unsigned vmod_compare_dn(struct sess *sp,const char *val,const char *attr){
 	if(!c->result) return res;
 	
 	struct berval bvalue;
-	bvalue.bv_val = c->dn;
+	bvalue.bv_val = (char*)c->dn;
 	bvalue.bv_len = c->dnlen;
 	ret = ldap_compare_ext_s(c->ld, val, attr,&bvalue, NULL, NULL);
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
 	return res;
 }
+
+//compare to attr
 unsigned vmod_compare_attribute(struct sess *sp,const char *val,const char *attr){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -307,14 +400,14 @@ unsigned vmod_compare_attribute(struct sess *sp,const char *val,const char *attr
 	if(!c->result) return res;
 	
 	struct berval bvalue;
-	bvalue.bv_val = val;
+	bvalue.bv_val = (char*)val;
 	bvalue.bv_len = strlen(val);
 	ret = ldap_compare_ext_s(c->ld, c->dn, attr,&bvalue, NULL, NULL);
 	if(ret == LDAP_COMPARE_TRUE) res = (1==1);
 	return res;
 }
 
-
+//bind
 unsigned vmod_bind(struct sess *sp){
 	struct vmod_ldap *c;
 	c = vmodldap_get_raw(sp);
@@ -356,36 +449,3 @@ unsigned vmod_simple_auth(struct sess *sp,unsigned V3,const char* basedn,const c
 }
 
 
-const char* vmod_get_basicuser(struct sess *sp){
-	char *user = 0,*pass = 0;
-	parseAuthHeader(sp,&user,&pass);
-	
-	return user;
-}
-const char* vmod_get_basicpass(struct sess *sp){
-	char *user = 0,*pass = 0;
-	
-	parseAuthHeader(sp,&user,&pass);
-	
-	return pass;
-}
-int
-init_function(struct vmod_priv *priv, const struct VCL_conf *conf)
-{
-    alphabet[BASE64].b64 =
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
-		"ghijklmnopqrstuvwxyz0123456789+/";
-	alphabet[BASE64].padding = '=';
-	alphabet[BASE64URL].b64 =
-		 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
-		 "ghijklmnopqrstuvwxyz0123456789-_";
-	alphabet[BASE64URL].padding = '=';
-	alphabet[BASE64URLNOPAD].b64 =
-		 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
-		 "ghijklmnopqrstuvwxyz0123456789-_";
-	alphabet[BASE64URLNOPAD].padding = 0;
-	vmod_digest_alpha_init(&alphabet[BASE64]);
-	vmod_digest_alpha_init(&alphabet[BASE64URL]);
-	vmod_digest_alpha_init(&alphabet[BASE64URLNOPAD]);
-	return (0);
-}
