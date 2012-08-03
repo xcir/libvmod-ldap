@@ -56,7 +56,11 @@ advanced authenticate
         ::
 
                 import ldap;
-                
+
+                sub vcl_deliver {
+                  //close ldap
+                  ldap.close();
+                }
                 sub vcl_error {
                   if (obj.status == 401) {
                     set obj.http.WWW-Authenticate = {"Basic realm="Authorization Required""};
@@ -78,17 +82,13 @@ advanced authenticate
                         ))){
                                 error 401;
                         }
-                        if(!(
-                             //compare group
-                             ldap.compare("cn=test,ou=people,dc=ldap,dc=example,dc=com","memberUid")
-                             //compare user
-                          && ldap.require_user("uid=hogehoge,ou=people,dc=ldap,dc=example,dc=com")
-                             //authenticate user
-                          && ldap.bind()
-                          ){
-                          ldap.close();
-                          error 401;
-                        }
+                        //compare group
+                        if(!ldap.compare("cn=test,ou=people,dc=ldap,dc=example,dc=com","memberUid")){error 401;}
+                        //compare user
+                        if(!require_user("uid=hogehoge,ou=people,dc=ldap,dc=example,dc=com")){error 401;}
+                        //authenticate user
+                        if(!ldap.bind()){error 401;}
+                        //close ldap
                         ldap.close();
                   }
                 }
