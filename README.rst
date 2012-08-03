@@ -89,6 +89,7 @@ advanced authenticate
                           ldap.close();
                           error 401;
                         }
+                        ldap.close();
                   }
                 }
 
