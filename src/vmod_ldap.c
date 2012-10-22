@@ -209,7 +209,7 @@ struct vmod_ldap *vmodldap_init(struct sess *sp, const char*user, const char*pas
 	buf[0] = 0;
 	ALLOC_OBJ(c, VMOD_LDAP_MAGIC);
 	AN(c);
-	snprintf(buf,64,"%lu",c);
+	snprintf(buf,64,"%ld",c);
 	
 	passlen = strlen(pass);
 	c->userlen = strlen(user);

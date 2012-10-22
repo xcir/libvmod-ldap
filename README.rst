@@ -7,8 +7,8 @@ LDAP module for Varnish
 -------------------------------
 
 :Author: Syohei Tanaka(@xcir)
-:Date: 2012-08-02
-:Version: 0.1
+:Date: 2012-10-23
+:Version: 0.2
 :Manual section: 3
 
 SYNOPSIS
@@ -348,6 +348,7 @@ Make targets:
 HISTORY
 ===========
 
+Version 0.2: Bugfix: sometimes segfault on x86_64.
 Version 0.1: initial
 
 COPYRIGHT
