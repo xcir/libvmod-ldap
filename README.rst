@@ -83,11 +83,11 @@ advanced authenticate
                                 error 401;
                         }
                         //compare group
-                        if(!ldap.compare("cn=test,ou=people,dc=ldap,dc=example,dc=com","memberUid")){error 401;}
+                        if(!ldap.compare("cn=test,ou=people,dc=ldap,dc=example,dc=com","memberUid")){ldap.close();error 401;}
                         //compare user
-                        if(!require_user("uid=hogehoge,ou=people,dc=ldap,dc=example,dc=com")){error 401;}
+                        if(!require_user("uid=hogehoge,ou=people,dc=ldap,dc=example,dc=com")){ldap.close();error 401;}
                         //authenticate user
-                        if(!ldap.bind()){error 401;}
+                        if(!ldap.bind()){ldap.close();error 401;}
                         //close ldap
                         ldap.close();
                   }
